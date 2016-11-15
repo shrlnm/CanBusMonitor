@@ -6,8 +6,9 @@ import sys
 import os
 import io
 import time
-import curses
 from datetime import datetime
+
+#print chr(27)+"[2J"+chr(27)+"[;H",
 
 class ELM:
 
@@ -15,10 +16,13 @@ class ELM:
   port = ""
   buff = ""
 
-  statsfilter = ['OK','at ','AT ','ELM','STO','327','CAN']
+  statsfilter = ['OK','at ','AT','ELM','STO','327','CAN','?','BUF']
   filter = []
   
   stats = {}
+  frames = {}
+  ps = 0
+  ct = 0
 
     
   def __init__(self, port, speed):
@@ -26,26 +30,41 @@ class ELM:
     self.port = port
     
                         
-  def print_line(self, line):
+  def new_line(self, line):
     
     global logfile
     
     line = line.strip()
     
-    if len(line)==0: return    
+    if len(line)<6: return    
     pref = line[:3]
 
     tm = int(round(time.time() * 1000))
-    if pref not in self.filter:
-      print tm,';',line
 
-    if pref in self.statsfilter: return    
-    
+    # Statistic
+    if pref in self.statsfilter : return    
+
+    if ord(line[4:5])<0x31 or ord(line[4:5])>0x38: return
+
+    dlc = int(line[4:5])
+
+    if len(line)<(dlc*3+5): return
+      
     if pref not in self.stats.keys():
       self.stats[pref]=1
     else:
       self.stats[pref]=self.stats[pref]+1
       
+    if pref not in self.filter:
+      #print tm,';',line
+      self.frames[pref]=line
+      self.ct = time.time()
+      if (self.ct-self.ps)>0.2:
+        print chr(27)+"[2J"+chr(27)+"[;H",'###### Frames ######'
+        for l in sorted(self.frames.keys()):
+          print "%-40s # %d" % (self.frames[l],self.stats[l])
+        self.ps = self.ct
+
     if logfile:
       logfile.write( str(tm)+';'+line+'\n' )
     
@@ -53,17 +72,19 @@ class ELM:
   def cmd(self, command):
     
     self.comp.write(command+"\r")    
-
+    
+    #print command
+    
     self.buff = ""
     while(True):
       byte = self.comp.read()
       if byte=='\r' or byte=='\n':
-        self.print_line(self.buff)
+        self.new_line(self.buff)
         self.buff = ""
         continue
       self.buff += byte
       if byte=='>':
-        print '>'
+        #print self.buff
         break
         
   def brd(self, boudrate):
@@ -77,7 +98,7 @@ class ELM:
     while(True):
       byte = self.comp.read()
       if byte=='\r' or byte=='\n':
-        self.print_line(self.buff)
+        self.new_line(self.buff)
         self.buff = ""
         continue
       self.buff += byte
@@ -192,7 +213,7 @@ def main():
   if opt_addr:
     elm.cmd("at cra "+opt_addr)
     
-  elm.brd(230400)
+  #elm.brd(230400)
   elm.cmd("at")
   
   try:
@@ -201,8 +222,8 @@ def main():
       elm.cmd("") 
   finally:
     print 'Good by'
-    for k in elm.stats.keys():
-      print k, '\t', elm.stats[k]
+    #for k in elm.stats.keys():
+    #  print k, '\t', elm.stats[k]
 
     elm.cmd("AT") 
     elm.brd(38400)
@@ -212,3 +233,6 @@ def main():
   
 if __name__ == '__main__':
   main()
+  #curses.wrapper(main)
+  
+    
